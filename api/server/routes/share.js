@@ -4,7 +4,7 @@ const {
   resolveShareAccess,
   generateCheckAccess,
   grantCreationPermissions,
-  cleanupSharedLinkPermissions,
+  deleteSharedLinkWithCleanup,
 } = require('@librechat/api');
 const { logger } = require('@librechat/data-schemas');
 const { PermissionTypes, Permissions } = require('librechat-data-provider');
@@ -12,7 +12,6 @@ const {
   getSharedMessages,
   createSharedLink,
   updateSharedLink,
-  deleteSharedLink,
   getSharedLinks,
   getSharedLink,
   getRoleByName,
@@ -41,7 +40,7 @@ if (allowSharedLinks) {
         return;
       }
 
-      const share = await getSharedMessages(req.params.shareId);
+      const share = await getSharedMessages(req.params.shareId, req.shareResourceId);
       if (share) {
         res.status(200).json(share);
       } else {
@@ -57,7 +56,7 @@ if (allowSharedLinks) {
 /**
  * Shared links
  */
-router.get('/', requireJwtAuth, checkSharedLinksAccess, async (req, res) => {
+router.get('/', requireJwtAuth, async (req, res) => {
   try {
     const params = {
       pageParam: req.query.cursor,
@@ -92,7 +91,7 @@ router.get('/', requireJwtAuth, checkSharedLinksAccess, async (req, res) => {
   }
 });
 
-router.get('/link/:conversationId', requireJwtAuth, checkSharedLinksAccess, async (req, res) => {
+router.get('/link/:conversationId', requireJwtAuth, async (req, res) => {
   try {
     const share = await getSharedLink(req.user.id, req.params.conversationId);
 
@@ -143,24 +142,10 @@ router.patch('/:shareId', requireJwtAuth, checkSharedLinksAccess, async (req, re
 
 router.delete('/:shareId', requireJwtAuth, checkSharedLinksAccess, async (req, res) => {
   try {
-    const mongoose = require('mongoose');
-    const link = await mongoose.models.SharedLink.findOne({
-      shareId: req.params.shareId,
-      user: req.user.id,
-    })
-      .select('_id')
-      .lean();
-
-    const result = await deleteSharedLink(req.user.id, req.params.shareId);
+    const result = await deleteSharedLinkWithCleanup(req.user.id, req.params.shareId);
 
     if (!result) {
       return res.status(404).json({ message: 'Share not found' });
-    }
-
-    if (link && link._id) {
-      cleanupSharedLinkPermissions(link._id).catch((err) => {
-        logger.error('[deleteSharedLink] ACL cleanup failed', err);
-      });
     }
 
     return res.status(200).json(result);

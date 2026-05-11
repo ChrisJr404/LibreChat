@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 import { logger } from '@librechat/data-schemas';
 import { PrincipalType, ResourceType, AccessRoleIds } from 'librechat-data-provider';
 import type { Model, Types, DeleteResult } from 'mongoose';
-import type { IAclEntry } from '@librechat/data-schemas';
+import type { IAclEntry, ISharedLink } from '@librechat/data-schemas';
 import { AccessControlService } from '~/acl/accessControlService';
 
 let _aclService: AccessControlService | null = null;
@@ -82,4 +82,80 @@ export async function cleanupBulkSharedLinkPermissions(
     resourceType: ResourceType.SHARED_LINK,
     resourceId: { $in: resourceIds },
   });
+}
+
+export async function deleteSharedLinkWithCleanup(
+  user: string,
+  shareId: string,
+): Promise<{ _id?: string; success: boolean; shareId: string; message: string } | null> {
+  const SharedLink = mongoose.models.SharedLink as Model<ISharedLink>;
+  const result = await SharedLink.findOneAndDelete({ shareId, user }).lean();
+
+  if (!result) {
+    return null;
+  }
+
+  const resourceId = result._id;
+  if (resourceId) {
+    cleanupSharedLinkPermissions(resourceId).catch((err) => {
+      logger.error('[deleteSharedLinkWithCleanup] ACL cleanup failed', {
+        shareId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+  }
+
+  return {
+    _id: resourceId?.toString(),
+    success: true,
+    shareId,
+    message: 'Share deleted successfully',
+  };
+}
+
+export async function deleteConvoSharedLinksWithCleanup(
+  user: string,
+  conversationId: string,
+): Promise<{ message: string; deletedCount: number }> {
+  const SharedLink = mongoose.models.SharedLink as Model<ISharedLink>;
+  const links = await SharedLink.find({ user, conversationId }).select('_id').lean();
+  const ids = links.map((l) => l._id);
+  const result = await SharedLink.deleteMany({ user, conversationId });
+
+  if (ids.length > 0) {
+    cleanupBulkSharedLinkPermissions(ids).catch((err) => {
+      logger.error('[deleteConvoSharedLinksWithCleanup] ACL cleanup failed', {
+        conversationId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+  }
+
+  return {
+    message: 'Shared links deleted successfully',
+    deletedCount: result.deletedCount,
+  };
+}
+
+export async function deleteAllSharedLinksWithCleanup(
+  user: string,
+): Promise<{ message: string; deletedCount: number }> {
+  const SharedLink = mongoose.models.SharedLink as Model<ISharedLink>;
+  const links = await SharedLink.find({ user }).select('_id').lean();
+  const ids = links.map((l) => l._id);
+  const result = await SharedLink.deleteMany({ user });
+
+  if (ids.length > 0) {
+    cleanupBulkSharedLinkPermissions(ids).catch((err) => {
+      logger.error('[deleteAllSharedLinksWithCleanup] ACL cleanup failed', {
+        user,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+  }
+
+  return {
+    message: 'All shared links deleted successfully',
+    deletedCount: result.deletedCount,
+  };
 }

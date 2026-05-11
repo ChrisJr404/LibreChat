@@ -731,56 +731,60 @@ const bulkUpdateResourcePermissions = async ({
       const ownerRoleIdStr = ownerRole._id.toString();
       const AclEntry = mongoose.models.AclEntry;
 
-      for (const principal of updatedPrincipals) {
-        if (principal.type === PrincipalType.PUBLIC) {
-          continue;
-        }
+      const nonPublicUpdated = updatedPrincipals.filter((p) => p.type !== PrincipalType.PUBLIC);
+      const nonPublicRevoked = revokedPrincipals.filter((p) => p.type !== PrincipalType.PUBLIC);
+      const allToCheck = [...nonPublicUpdated, ...nonPublicRevoked];
 
-        const existingEntry = await AclEntry.findOne({
+      if (allToCheck.length > 0) {
+        const orQueries = allToCheck.map((p) => ({
+          principalType: p.type,
+          principalId:
+            p.type === PrincipalType.ROLE ? p.id : new mongoose.Types.ObjectId(p.id),
+        }));
+
+        const existingEntries = await AclEntry.find({
           resourceType,
           resourceId,
-          principalType: principal.type,
-          principalId:
-            principal.type === PrincipalType.ROLE
-              ? principal.id
-              : new mongoose.Types.ObjectId(principal.id),
+          $or: orQueries,
         }).lean();
 
-        const isCurrentOwner =
-          existingEntry &&
-          existingEntry.roleId &&
-          existingEntry.roleId.toString() === ownerRoleIdStr;
-
-        if (isCurrentOwner && principal.accessRoleId !== AccessRoleIds.SHARED_LINK_OWNER) {
-          throw new Error('Cannot demote the owner of a shared link');
-        }
-        if (!isCurrentOwner && principal.accessRoleId === AccessRoleIds.SHARED_LINK_OWNER) {
-          throw new Error('Cannot assign owner role to non-owner principals for shared links');
-        }
-      }
-
-      for (const principal of revokedPrincipals) {
-        if (principal.type === PrincipalType.PUBLIC) {
-          continue;
+        const entryMap = new Map();
+        for (const entry of existingEntries) {
+          const key = `${entry.principalType}:${entry.principalId?.toString() ?? ''}`;
+          entryMap.set(key, entry);
         }
 
-        const existingEntry = await AclEntry.findOne({
-          resourceType,
-          resourceId,
-          principalType: principal.type,
-          principalId:
+        for (const principal of nonPublicUpdated) {
+          const pid =
             principal.type === PrincipalType.ROLE
               ? principal.id
-              : new mongoose.Types.ObjectId(principal.id),
-        }).lean();
+              : new mongoose.Types.ObjectId(principal.id);
+          const key = `${principal.type}:${pid?.toString() ?? ''}`;
+          const existing = entryMap.get(key);
+          const isOwner =
+            existing?.roleId && existing.roleId.toString() === ownerRoleIdStr;
 
-        const isCurrentOwner =
-          existingEntry &&
-          existingEntry.roleId &&
-          existingEntry.roleId.toString() === ownerRoleIdStr;
+          if (isOwner && principal.accessRoleId !== AccessRoleIds.SHARED_LINK_OWNER) {
+            throw new Error('Cannot demote the owner of a shared link');
+          }
+          if (!isOwner && principal.accessRoleId === AccessRoleIds.SHARED_LINK_OWNER) {
+            throw new Error('Cannot assign owner role to non-owner principals for shared links');
+          }
+        }
 
-        if (isCurrentOwner) {
-          throw new Error('Cannot remove the owner of a shared link');
+        for (const principal of nonPublicRevoked) {
+          const pid =
+            principal.type === PrincipalType.ROLE
+              ? principal.id
+              : new mongoose.Types.ObjectId(principal.id);
+          const key = `${principal.type}:${pid?.toString() ?? ''}`;
+          const existing = entryMap.get(key);
+          const isOwner =
+            existing?.roleId && existing.roleId.toString() === ownerRoleIdStr;
+
+          if (isOwner) {
+            throw new Error('Cannot remove the owner of a shared link');
+          }
         }
       }
     }

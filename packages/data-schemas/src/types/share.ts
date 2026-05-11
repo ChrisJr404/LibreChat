@@ -50,6 +50,7 @@ export interface UpdateShareResult {
 }
 
 export interface DeleteShareResult {
+  _id?: string;
   success: boolean;
   shareId: string;
   message: string;

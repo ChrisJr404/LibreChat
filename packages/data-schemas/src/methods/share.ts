@@ -158,10 +158,17 @@ export function createShareMethods(mongoose: typeof import('mongoose')) {
   /**
    * Get shared messages for a public share link
    */
-  async function getSharedMessages(shareId: string): Promise<t.SharedMessagesResult | null> {
+  async function getSharedMessages(
+    shareId: string,
+    shareObjectId?: string,
+  ): Promise<t.SharedMessagesResult | null> {
     try {
       const SharedLink = mongoose.models.SharedLink as Model<t.ISharedLink>;
-      const share = (await SharedLink.findOne({ shareId })
+      const query = shareObjectId
+        ? SharedLink.findById(shareObjectId)
+        : SharedLink.findOne({ shareId });
+
+      const share = (await query
         .populate({
           path: 'messages',
           select: '-_id -__v -user',
@@ -535,6 +542,7 @@ export function createShareMethods(mongoose: typeof import('mongoose')) {
       }
 
       return {
+        _id: result._id?.toString(),
         success: true,
         shareId,
         message: 'Share deleted successfully',

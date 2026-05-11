@@ -42,6 +42,8 @@ async function autoMigrateLegacyLink(share: RawSharedLink): Promise<void> {
   }
 
   const resourceId = shareId.toString();
+  let ownerGranted = false;
+  let publicGranted = false;
 
   if (share.user) {
     const existingOwner = await getAclService().checkPermission({
@@ -61,6 +63,7 @@ async function autoMigrateLegacyLink(share: RawSharedLink): Promise<void> {
           accessRoleId: AccessRoleIds.SHARED_LINK_OWNER,
           grantedBy: share.user,
         });
+        ownerGranted = true;
       } catch (err) {
         logger.error('[autoMigrateLegacyLink] Failed to grant OWNER', {
           shareId: share.shareId,
@@ -83,6 +86,7 @@ async function autoMigrateLegacyLink(share: RawSharedLink): Promise<void> {
           accessRoleId: AccessRoleIds.SHARED_LINK_VIEWER,
           grantedBy: share.user ?? resourceId,
         });
+        publicGranted = true;
       } catch (err) {
         logger.error('[autoMigrateLegacyLink] Failed to grant PUBLIC VIEWER', {
           shareId: share.shareId,
@@ -92,10 +96,14 @@ async function autoMigrateLegacyLink(share: RawSharedLink): Promise<void> {
     }
   }
 
-  logger.info('[autoMigrateLegacyLink] Migrated legacy shared link', {
-    shareId: share.shareId,
-    resourceId,
-  });
+  if (ownerGranted || publicGranted) {
+    logger.info('[autoMigrateLegacyLink] Migrated legacy shared link', {
+      shareId: share.shareId,
+      resourceId,
+      ownerGranted,
+      publicGranted,
+    });
+  }
 }
 
 async function hasPublicViewPermission(resourceId: string): Promise<boolean> {
@@ -153,6 +161,7 @@ export async function resolveShareAccess(req: Request, res: Response): Promise<v
 
     if (publicGranted) {
       if (isEnabled(process.env.ALLOW_SHARED_LINKS_PUBLIC)) {
+        (req as unknown as Record<string, unknown>).shareResourceId = resourceId;
         return;
       }
 
@@ -161,6 +170,7 @@ export async function resolveShareAccess(req: Request, res: Response): Promise<v
         return;
       }
 
+      (req as unknown as Record<string, unknown>).shareResourceId = resourceId;
       return;
     }
 
@@ -185,6 +195,9 @@ export async function resolveShareAccess(req: Request, res: Response): Promise<v
 
     if (!hasAccess) {
       res.status(403).json({ message: 'You do not have permission to view this shared link' });
+      return;
     }
+
+    (req as unknown as Record<string, unknown>).shareResourceId = resourceId;
   });
 }

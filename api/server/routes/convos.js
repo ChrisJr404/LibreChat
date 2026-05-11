@@ -1,7 +1,11 @@
 const multer = require('multer');
 const express = require('express');
 const { sleep } = require('@librechat/agents');
-const { isEnabled, resolveImportMaxFileSize } = require('@librechat/api');
+const {
+  isEnabled,
+  resolveImportMaxFileSize,
+  deleteConvoSharedLinksWithCleanup,
+} = require('@librechat/api');
 const { logger } = require('@librechat/data-schemas');
 const { CacheKeys, EModelEndpoint } = require('librechat-data-provider');
 const {
@@ -129,7 +133,7 @@ router.delete('/', async (req, res) => {
     const dbResponse = await db.deleteConvos(req.user.id, filter);
     if (filter.conversationId) {
       await db.deleteToolCalls(req.user.id, filter.conversationId);
-      await db.deleteConvoSharedLink(req.user.id, filter.conversationId);
+      await deleteConvoSharedLinksWithCleanup(req.user.id, filter.conversationId);
     }
     res.status(201).json(dbResponse);
   } catch (error) {
