@@ -323,7 +323,11 @@ const deleteUserController = async (req, res) => {
     }
     await deleteUserPluginAuth(user.id, null, true);
     await db.deleteUserById(user.id);
-    await db.deleteAllSharedLinks(user.id);
+    const sharedLinksResult = await db.deleteAllSharedLinks(user.id);
+    if (sharedLinksResult?.deletedIds?.length > 0) {
+      const { cleanupBulkSharedLinkPermissions } = require('@librechat/api');
+      await cleanupBulkSharedLinkPermissions(sharedLinksResult.deletedIds);
+    }
     await deleteUserFiles(req);
     await db.deleteFiles(null, user.id);
     await db.deleteToolCalls(user.id);

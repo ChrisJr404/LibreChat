@@ -1,7 +1,12 @@
 const mongoose = require('mongoose');
 const { isEnabled } = require('@librechat/api');
+const {
+  ResourceType,
+  PrincipalType,
+  PrincipalModel,
+  AccessRoleIds,
+} = require('librechat-data-provider');
 const { getTransactionSupport, logger } = require('@librechat/data-schemas');
-const { ResourceType, PrincipalType, PrincipalModel } = require('librechat-data-provider');
 const {
   entraIdPrincipalFeatureEnabled,
   getUserOwnedEntraGroups,
@@ -717,6 +722,68 @@ const bulkUpdateResourcePermissions = async ({
     };
 
     const bulkWrites = [];
+
+    if (resourceType === ResourceType.SHARED_LINK) {
+      const ownerRole = rolesMap.get(AccessRoleIds.SHARED_LINK_OWNER);
+      if (!ownerRole) {
+        throw new Error('SHARED_LINK_OWNER role not found');
+      }
+      const ownerRoleIdStr = ownerRole._id.toString();
+      const AclEntry = mongoose.models.AclEntry;
+
+      for (const principal of updatedPrincipals) {
+        if (principal.type === PrincipalType.PUBLIC) {
+          continue;
+        }
+
+        const existingEntry = await AclEntry.findOne({
+          resourceType,
+          resourceId,
+          principalType: principal.type,
+          principalId:
+            principal.type === PrincipalType.ROLE
+              ? principal.id
+              : new mongoose.Types.ObjectId(principal.id),
+        }).lean();
+
+        const isCurrentOwner =
+          existingEntry &&
+          existingEntry.roleId &&
+          existingEntry.roleId.toString() === ownerRoleIdStr;
+
+        if (isCurrentOwner && principal.accessRoleId !== AccessRoleIds.SHARED_LINK_OWNER) {
+          throw new Error('Cannot demote the owner of a shared link');
+        }
+        if (!isCurrentOwner && principal.accessRoleId === AccessRoleIds.SHARED_LINK_OWNER) {
+          throw new Error('Cannot assign owner role to non-owner principals for shared links');
+        }
+      }
+
+      for (const principal of revokedPrincipals) {
+        if (principal.type === PrincipalType.PUBLIC) {
+          continue;
+        }
+
+        const existingEntry = await AclEntry.findOne({
+          resourceType,
+          resourceId,
+          principalType: principal.type,
+          principalId:
+            principal.type === PrincipalType.ROLE
+              ? principal.id
+              : new mongoose.Types.ObjectId(principal.id),
+        }).lean();
+
+        const isCurrentOwner =
+          existingEntry &&
+          existingEntry.roleId &&
+          existingEntry.roleId.toString() === ownerRoleIdStr;
+
+        if (isCurrentOwner) {
+          throw new Error('Cannot remove the owner of a shared link');
+        }
+      }
+    }
 
     for (const principal of updatedPrincipals) {
       try {

@@ -967,6 +967,16 @@ export const interfaceSchema = z
         }),
       ])
       .optional(),
+    sharedLinks: z
+      .union([
+        z.boolean(),
+        z.object({
+          create: z.boolean().optional(),
+          share: z.boolean().optional(),
+          public: z.boolean().optional(),
+        }),
+      ])
+      .optional(),
   })
   .default({
     modelSelect: true,
@@ -1019,6 +1029,11 @@ export const interfaceSchema = z
       share: false,
       public: false,
       defaultActiveOnShare: false,
+    },
+    sharedLinks: {
+      create: true,
+      share: true,
+      public: true,
     },
   });
 

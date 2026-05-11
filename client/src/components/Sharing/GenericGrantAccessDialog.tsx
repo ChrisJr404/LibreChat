@@ -180,14 +180,16 @@ export default function GenericGrantAccessDialog({
         return !allSharesMap.has(key);
       });
 
+      const publicChanged = isPublic !== currentIsPublic;
+
       await updatePermissionsMutation.mutateAsync({
         resourceType,
         resourceId: resourceDbId,
         data: {
           updated,
           removed,
-          public: isPublic,
-          publicAccessRoleId: isPublic ? publicRole : undefined,
+          ...(publicChanged ? { public: isPublic } : {}),
+          ...(publicChanged && isPublic ? { publicAccessRoleId: publicRole } : {}),
         },
       });
 
