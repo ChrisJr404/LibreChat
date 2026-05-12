@@ -181,6 +181,8 @@ export default function GenericGrantAccessDialog({
       });
 
       const publicChanged = isPublic !== currentIsPublic;
+      const publicRoleChanged = isPublic && publicRole !== currentPublicRole;
+      const sendPublicUpdate = publicChanged || publicRoleChanged;
 
       await updatePermissionsMutation.mutateAsync({
         resourceType,
@@ -188,8 +190,8 @@ export default function GenericGrantAccessDialog({
         data: {
           updated,
           removed,
-          ...(publicChanged ? { public: isPublic } : {}),
-          ...(publicChanged && isPublic ? { publicAccessRoleId: publicRole } : {}),
+          ...(sendPublicUpdate ? { public: isPublic } : {}),
+          ...(sendPublicUpdate && isPublic ? { publicAccessRoleId: publicRole } : {}),
         },
       });
 
